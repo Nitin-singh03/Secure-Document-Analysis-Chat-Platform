@@ -191,11 +191,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - MongoDB for the flexible database solution
 
 ---
-
-<div align="center">
-
-**Made with ❤️ by [Your Name]**
-
-[⭐ Star this repo](https://github.com/yourusername/intellidoc) | [🐛 Report Bug](https://github.com/yourusername/intellidoc/issues) | [💡 Request Feature](https://github.com/yourusername/intellidoc/issues)
-
-</div>
