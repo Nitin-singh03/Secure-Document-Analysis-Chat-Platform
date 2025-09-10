@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+body {
+  @apply bg-gray-50 text-gray-900;
+}
+
+.auth-container {
+  @apply min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8;
+}
+
+.form-container {
+  @apply w-full max-w-md space-y-8 p-10 bg-white rounded-xl shadow-lg z-10;
+}
+
+.form-title {
+  @apply text-center text-3xl font-extrabold text-gray-900;
+}
+
+.social-login-divider {
+  @apply flex items-center justify-center my-6;
+}
+
+.social-login-divider .line {
+  @apply h-px w-full bg-gray-300;
+}
+
+.social-login-divider .text {
+  @apply px-3 text-sm font-medium text-gray-500 bg-white;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-in-out forwards;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.dashboard-container {
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* === CONSOLIDATED CODE BLOCK STYLES === */
+
+.code-block {
+  position: relative;
+  background-color: #2d2d2d;
+  /* A nice dark background */
+  color: #f8f8f2;
+  border-radius: 8px;
+  padding: 1rem;
+  /* 16px */
+  margin-top: 1rem;
+  font-family: 'Courier New', Courier, monospace;
+  overflow-x: auto;
+}
+
+/* Position the language label (e.g., 'python') on the top-left */
+.code-block .language-label {
+  position: absolute;
+  top: 8px;
+  left: 16px;
+  /* Position on the left to avoid the copy button */
+  color: #9b9b9b;
+  font-size: 0.8em;
+  user-select: none;
+  /* Make it non-selectable */
+}
+
+/* Position your copy button on the top-right */
+.copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #374151;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.copy-button:hover {
+  opacity: 1;
+  background: #4b5563;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 0;
+  padding-top: 1.5rem;
+}
+
+.code-block code {
+  display: block;
+}
