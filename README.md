@@ -18,7 +18,7 @@
 - **📄 Document Upload** - Support for PDF and DOCX files (up to 5MB)
 - **🤖 AI-Powered Q&A** - Ask questions about your documents using Google Gemini AI
 - **💬 Chat History** - Maintain conversation context for better responses
-- **🔐 User Authentication** - Secure login with email verification
+- **🔐 Dual Token Authentication** - JWT access/refresh tokens with OAuth support
 - **📱 Responsive Design** - Works seamlessly on desktop and mobile
 - **🎨 Beautiful UI** - Clean, modern interface with Tailwind CSS
 - **📋 Code Highlighting** - Syntax highlighting for code blocks in responses
@@ -57,12 +57,20 @@
 
    **Server/.env**
    ```env
-   PORT=4000
-   MONGODB_URI=your_mongodb_connection_string
-   JWT_SECRET=your_jwt_secret
+   MONGO_URI=your_mongodb_connection_string
+   JWT_SECRET_KEY=your_jwt_secret_key
+   JWT_REFRESH_SECRET_KEY=your_jwt_refresh_secret_key
+   NODE_ENV=development
+   SMTP_USER=your_smtp_user
+   SMTP_PASSWORD=your_smtp_password
+   SENDER_EMAIL=your_sender_email
+   CLIENT=http://localhost:5173
+   SERVER_URI=http://localhost:4000
+   GOOGLE_CLIENT_ID=your_google_client_id
+   GOOGLE_CLIENT_SECRET=your_google_client_secret
+   GITHUB_CLIENT_ID=your_github_client_id
+   GITHUB_CLIENT_SECRET=your_github_client_secret
    GOOGLE_API_KEY=your_google_ai_api_key
-   EMAIL_USER=your_email@gmail.com
-   EMAIL_PASS=your_app_password
    ```
 
    **Client/.env**
@@ -131,20 +139,28 @@ IntelliDoc/
 
 ## 📖 Usage
 
-1. **Register/Login** - Create an account or sign in
-2. **Upload Documents** - Upload PDF or DOCX files (max 5MB)
-3. **Select Document** - Click on a document to select it
-4. **Ask Questions** - Type your questions about the document
-5. **Get AI Responses** - Receive intelligent, formatted answers
+1. **Register/Login** - Create account with email/password or use Google/GitHub OAuth
+2. **Email Verification** - Verify your account with OTP sent to email
+3. **Upload Documents** - Upload PDF or DOCX files (max 5MB)
+4. **Select Document** - Click on a document to select it
+5. **Ask Questions** - Type your questions about the document
+6. **Get AI Responses** - Receive intelligent, formatted answers with code highlighting
+
+### Authentication Flow
+- **Access Token** - Short-lived JWT for API requests (15 minutes)
+- **Refresh Token** - Long-lived token for renewing access (7 days)
+- **Automatic Renewal** - Seamless token refresh without re-login
+- **Social Login** - One-click authentication with Google/GitHub
 
 ## 🔒 Security Features
 
-- JWT-based authentication
-- Email verification
-- File size validation (5MB limit)
-- Input sanitization
-- Protected routes
-- XSS prevention in code blocks
+- **Dual Token Authentication** - JWT access tokens with refresh token rotation
+- **Email Verification** - Account verification via OTP
+- **OAuth Integration** - Google and GitHub social login
+- **File Size Validation** - 5MB upload limit enforcement
+- **Input Sanitization** - XSS prevention in code blocks
+- **Protected Routes** - Middleware-based route protection
+- **Secure Headers** - CORS and security headers configuration
 
 ## 🎨 UI Features
 
