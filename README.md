@@ -179,15 +179,3 @@ IntelliDoc/
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Google AI for Gemini API
-- React team for the amazing framework
-- Tailwind CSS for the utility-first approach
-- MongoDB for the flexible database solution
-
----
