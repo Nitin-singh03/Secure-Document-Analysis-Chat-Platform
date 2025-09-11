@@ -154,8 +154,8 @@ const deleteDocument = async (req, res) => {
 const getUserDocuments = async (req, res) => {
     try {
         const documents = await Document.find({ userId: req.user._id })
-            .select('filename uploadDate updatedAt')
-            .sort({ uploadDate: -1, updatedAt: -1 });
+            .select('filename createdAt updatedAt')
+            .sort({ updatedAt: -1, createdAt: -1 });
         res.json({ documents });
     } catch (error) {
         res.status(500).json({ message: error.message });

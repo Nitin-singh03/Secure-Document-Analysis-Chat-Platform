@@ -1,4 +1,4 @@
-# 📚 IntelliDoc - AI-Powered Document RAG System
+# IntelliDoc - AI-Powered Document RAG System
 
 <div align="center">
 
@@ -13,17 +13,35 @@
 
 </div>
 
-## 🌟 Features
+## Screenshots
 
-- **📄 Document Upload** - Support for PDF and DOCX files (up to 5MB)
-- **🤖 AI-Powered Q&A** - Ask questions about your documents using Google Gemini AI
-- **💬 Chat History** - Maintain conversation context for better responses
-- **🔐 Dual Token Authentication** - JWT access/refresh tokens with OAuth support
-- **📱 Responsive Design** - Works seamlessly on desktop and mobile
-- **🎨 Beautiful UI** - Clean, modern interface with Tailwind CSS
-- **📋 Code Highlighting** - Syntax highlighting for code blocks in responses
+<div align="center">
 
-## 🚀 Quick Start
+### Home Page
+![Home Page](./public/home.png)
+
+### Login Page
+![Login Page](./public/login.png)
+
+### Register Page
+![Register Page](./public/register.png)
+
+### Dashboard
+![Dashboard](./public/dashboard.png)
+
+</div>
+
+## Features
+
+- **Document Upload** - Support for PDF and DOCX files (up to 5MB)
+- **AI-Powered Q&A** - Ask questions about your documents using Google Gemini AI
+- **Chat History** - Maintain conversation context for better responses
+- **Dual Token Authentication** - JWT access/refresh tokens with OAuth support
+- **Responsive Design** - Works seamlessly on desktop and mobile
+- **Beautiful UI** - Clean, modern interface with Tailwind CSS
+- **Code Highlighting** - Syntax highlighting for code blocks in responses
+
+## Quick Start
 
 ### Prerequisites
 
@@ -96,7 +114,7 @@
    
    Open your browser and navigate to `http://localhost:5173`
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 IntelliDoc/
@@ -117,7 +135,7 @@ IntelliDoc/
 └── README.md
 ```
 
-## 🔧 Tech Stack
+## Tech Stack
 
 ### Frontend
 - **React 18** - Modern UI library
@@ -137,7 +155,7 @@ IntelliDoc/
 - **Google Generative AI** - AI responses
 - **Nodemailer** - Email service
 
-## 📖 Usage
+## Usage
 
 1. **Register/Login** - Create account with email/password or use Google/GitHub OAuth
 2. **Email Verification** - Verify your account with OTP sent to email
@@ -152,7 +170,7 @@ IntelliDoc/
 - **Automatic Renewal** - Seamless token refresh without re-login
 - **Social Login** - One-click authentication with Google/GitHub
 
-## 🔒 Security Features
+## Security Features
 
 - **Dual Token Authentication** - JWT access tokens with refresh token rotation
 - **Email Verification** - Account verification via OTP
@@ -162,7 +180,7 @@ IntelliDoc/
 - **Protected Routes** - Middleware-based route protection
 - **Secure Headers** - CORS and security headers configuration
 
-## 🎨 UI Features
+## UI Features
 
 - Responsive design for all devices
 - Dark theme code blocks with syntax highlighting
@@ -171,7 +189,7 @@ IntelliDoc/
 - Loading states and error handling
 - Toast notifications for user feedback
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
