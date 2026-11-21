@@ -2,21 +2,20 @@
 
 ## 1. Executive Summary & Architecture Overview
 
-This report provides an in-depth architectural breakdown of the **Retrieval-Augmented Generation (RAG)** pipeline of the IntelliDoc system, hosted entirely on **MongoDB Atlas (Free M0 Tier)**. This analysis excludes frontend presentation and user authentication layers to focus strictly on document ingestion, vectorization, Atlas Vector Search storage, query processing, semantic retrieval, and response synthesis.
+This report provides a clear, focused architectural breakdown of the **Retrieval-Augmented Generation (RAG)** pipeline of the IntelliDoc system, running natively on **MongoDB Atlas (Free M0 Tier)**. This analysis excludes frontend presentation and user authentication layers to focus strictly on document ingestion, vectorization, Atlas Vector Search storage, query processing, semantic retrieval, and response synthesis.
 
-IntelliDoc implements an end-to-end **cloud-native, hybrid RAG pipeline** designed for zero-infrastructure overhead, high reliability, low-latency semantic search, and robust conversational grounding:
+IntelliDoc implements a clean, standard **Vector RAG pipeline**:
 1. **Sliding-Window Text Chunking** with configurable chunk sizes and overlap.
-2. **Dense Vector Embeddings** powered by Google Generative AI (`gemini-embedding-001`).
+2. **Dense Vector Embeddings** powered by Google Generative AI (`gemini-embedding-001`), explicitly constrained to 768 dimensions.
 3. **MongoDB Atlas Vector Search**:
-   - Chunks stored in dedicated `chunks` collection ([ChunkModel.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/models/ChunkModel.js)).
-   - Atlas Vector Search index (`vector_index`) configured with HNSW indexing and cosine metric.
-   - Pre-filtering scoped directly by `documentId` (`ObjectId`).
-4. **Resilient Multi-Tiered Retrieval Engine**:
-   - **Tier 1**: Hardware-accelerated ANN vector search via MongoDB Atlas `$vectorSearch`.
-   - **Tier 2 (Fallback)**: In-memory exact Cosine Similarity search over MongoDB chunk vectors if the Atlas index is still building or offline.
-   - **Tier 3 (Safety Net)**: Head truncation (`content.slice(0, 2000)`) if no chunks exist.
+   - Chunks stored as standalone documents in a dedicated `chunks` collection ([ChunkModel.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/models/ChunkModel.js)).
+   - Vector search index (`vector_index`) configured with cosine similarity.
+   - Compound pre-filtering scoped by both `documentId` and `userId` (`ObjectId`).
+4. **Pure Vector Retrieval**:
+   - Direct Approximate Nearest Neighbor (ANN) search via MongoDB Atlas `$vectorSearch`.
+   - If no relevant sections match the query, the system explicitly reports no relevant context found rather than hallucinating or stuffing raw document text.
 5. **Contextual History Augmentation**: Recent dialogue history is injected alongside top-$k$ retrieved chunks into `gemini-3.5-flash-lite`.
-6. **Synchronous Lifecycle Deletion**: Cascading purge across MongoDB documents, chat sessions, and chunk vectors.
+6. **Sequential Cascading Deletion**: Clean cascading purge across MongoDB documents, chat sessions, and chunk vectors.
 
 ---
 
@@ -32,59 +31,49 @@ flowchart TD
         D --> F["Raw Extracted Text"]
         E --> F
         F --> G["chunkText(chunkSize=600, overlap=50)"]
-        G --> H["Sequential Embedding Loop\ngemini-embedding-001"]
-        H --> I["Rate-Limit Throttling (200ms) &\nForced GC (every 5 chunks)"]
+        G --> H["Sequential Embedding Loop\ngemini-embedding-001 (outputDimensionality: 768)"]
+        H --> I["Rate-Limit Throttling (200ms)"]
         I --> J["Construct Chunks Array\n[{documentId, userId, text, embedding, index}]"]
         J --> K["MongoDB Document.save()"]
         J --> L["MongoDB Atlas Chunk.insertMany()\n(chunks collection)"]
     end
 
-    subgraph Retrieval ["Stage 2: Semantic Query & Multi-Tier Retrieval"]
+    subgraph Retrieval ["Stage 2: Semantic Query & Atlas Vector Search"]
         M["User Question + documentId"] --> N["Persist User Message in ChatModel"]
-        M --> O["generateEmbedding(question)\ngemini-embedding-001"]
-        O --> P{"Atlas Vector Search ($vectorSearch)"}
-        P -->|"Success"| Q["Atlas $vectorSearch(index: 'vector_index', topK=3, filter: {documentId})"]
-        P -->|"Index Error / Fallback"| R["In-Memory Cosine Similarity\nfindRelevantChunks(MongoDB chunks, topK=3)"]
-        Q --> S{"Chunks Returned?"}
-        S -->|"Yes"| T["Join Top-3 Chunks (\n\n)"]
-        S -->|"No"| R
-        R --> U{"Chunks Found?"}
-        U -->|"Yes"| T
-        U -->|"No"| V["Truncated Raw Content\n(First 2,000 characters)"]
+        M --> O["generateEmbedding(question, outputDimensionality: 768)"]
+        O --> P["Atlas $vectorSearch\n(index: 'vector_index', topK=3, filter: documentId AND userId)"]
+        P --> Q{"Chunks Found?"}
+        Q -->|"No"| R["Return: 'I could not find any relevant sections...'"]
+        Q -->|"Yes"| S["Join Top-3 Chunks (\n\n)"]
     end
 
     subgraph Generation ["Stage 3: Prompt Assembly & LLM Synthesis"]
-        T --> W["Context Text"]
-        V --> W
-        N --> X["Windowed Chat History (Last 6 messages)"]
-        W --> Y["System & Context Prompt Template"]
-        X --> Y
-        Y --> Z["Google Generative AI (gemini-3.5-flash-lite)"]
-        Z --> AA["Extract Response Text"]
-        AA --> AB["Append AI Message to ChatModel"]
-        AA --> AC["Return JSON: { answer }"]
+        S --> T["Context Text"]
+        N --> U["Windowed Chat History (Last 6 messages)"]
+        T --> V["System & Context Prompt Template"]
+        U --> V
+        V --> W["Google Generative AI (gemini-3.5-flash-lite)"]
+        W --> X["Extract Response Text"]
+        X --> Y["Append AI Message to ChatModel"]
+        X --> Z["Return JSON: { answer }"]
     end
 ```
 
 ---
 
-## 3. Deep Dive: Document Ingestion & Indexing Pipeline
+## 3. Deep Dive: Ingestion, Chunking & Embeddings
 
 The ingestion flow is handled by `uploadDocument` in [DocumentController.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/controllers/DocumentController.js).
 
 ### 3.1 Input Validation & Buffering
 - **Transport**: Express route `POST /api/documents/upload` backed by `multer({ storage: multer.memoryStorage() })`.
-- **Buffer Retention**: Files are held strictly in RAM as `req.file.buffer` without writing temporary files to disk.
+- **Buffer Retention**: Files are buffered strictly in RAM as `req.file.buffer` without writing temporary files to disk.
 - **Constraints**: Hard cap at $5\text{ MB}$ (`req.file.size > 5 * 1024 * 1024`), returning `HTTP 400` on violation.
 
-### 3.2 Text Extraction Layer
-Extraction splits dynamically according to `req.file.mimetype`:
-1. **Portable Document Format (`application/pdf`)**:
-   - Processed via `pdfreader` through an event-based parser.
-   - **Resilience**: If PDF parsing encounters an error, a fallback string is generated preserving the document record rather than throwing an unhandled fatal error.
-2. **Microsoft Word Document (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`)**:
-   - Processed via `mammoth.extractRawText({ buffer: req.file.buffer })`.
-   - Extracts plain body text cleanly from the docx XML structures.
+### 3.2 Text Extraction
+- **PDF Extraction**: Processed via `pdfreader` through an event-based parser.
+- **DOCX Extraction**: Processed via `mammoth.extractRawText({ buffer: req.file.buffer })`.
+- **Validation**: If extraction produces empty text, returns `HTTP 400` immediately.
 
 ### 3.3 Text Chunking Algorithm
 Located in [vectorUtils.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/vectorUtils.js):
@@ -107,26 +96,28 @@ export const chunkText = (text, chunkSize = 600, overlap = 50) => {
 - **Chunk Size ($C$)**: 600 characters.
 - **Overlap ($O$)**: 50 characters ($8.33\%$ overlap ratio).
 - **Step Size ($S$)**: $S = C - O = 550$ characters.
-- **Boundary Handling**: If `end >= text.length`, the iteration breaks to prevent trailing redundant loops. The sliding window preserves semantic continuity across chunk boundaries so phrases sliced at position 600 are still legible in the overlapping 50 characters of the next chunk.
+- **Continuity**: The sliding window ensures phrases spanning chunk boundaries remain semantically complete.
 
 ### 3.4 Vector Embedding Generation
 Embedding computation is defined in [vectorUtils.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/vectorUtils.js):
 - **Model**: `gemini-embedding-001` via `@google/generative-ai`.
-- **Dimensionality**: 768-dimensional floating point dense vectors.
-- **Retry Mechanism**: 3 maximum attempts with exponential backoff:
+- **Dimensionality Constraint**: By default, `gemini-embedding-001` produces 3072-dimensional vectors. The generator explicitly specifies `outputDimensionality: 768`:
+  ```javascript
+  const result = await model.embedContent({
+      content: { parts: [{ text }] },
+      outputDimensionality: 768
+  });
+  ```
+  This guarantees strict dimension alignment with the Atlas index schema (`numDimensions: 768`).
+- **Retry Mechanism**: 3 maximum attempts with linear backoff:
   $$\text{Delay} = 1000 \times (i + 1)\text{ ms}$$
-- **Throttling & Resource Control**:
-  - Chunks are vectorized sequentially (`for` loop) to respect Google Gemini API rate limits.
-  - **Inter-chunk Delay**: An intentional pause of $200\text{ ms}$ (`setTimeout(resolve, 200)`) between each chunk prevents hitting the QPS threshold.
-  - **Memory Management**: Garbage collection is triggered every 5 chunks (`i % 5 === 0`) if exposed (`global.gc`).
-  - **Failure Tolerance**: If an individual chunk fails all 3 retry attempts, it is logged and skipped (`continue`), allowing the rest of the document to be indexed successfully.
+- **Rate-Limit Throttling**: Chunks are vectorized sequentially with a $200\text{ ms}$ pause between calls to respect API quotas.
 
-### 3.5 Storage in MongoDB Atlas
-All data is stored directly in MongoDB Atlas:
+### 3.5 Storage Architecture in MongoDB Atlas
 1. **Parent Document ([DocumentModel.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/models/DocumentModel.js))**:
-   - Stores `userId`, `filename`, `content`, `chunkCount`, and timestamps in the `documents` collection.
-2. **Chunk Vectors ([ChunkModel.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/models/ChunkModel.js))**:
-   - Stores individual chunks as separate documents in the `chunks` collection:
+   - Stores metadata: `userId`, `filename`, `content`, `totalChunks`, `indexedChunks`, `status`.
+2. **Chunk Collection ([ChunkModel.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/models/ChunkModel.js))**:
+   - Stores each chunk as an isolated document:
      ```javascript
      {
        documentId: ObjectId,
@@ -136,64 +127,22 @@ All data is stored directly in MongoDB Atlas:
        index: Number
      }
      ```
-   - This eliminates the 16MB document size limit risk of storing all embeddings within a single parent document and allows direct, high-performance vector indexing.
+   - **Scalability**: Eliminates the 16MB single-document BSON limit on large PDFs and allows direct vector index traversal.
 
 ---
 
 ## 4. Deep Dive: Query, Retrieval & Semantic Search
 
-When a user submits a query to `POST /api/documents/query`, the following workflow runs inside [DocumentController.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/controllers/DocumentController.js):
+When a query arrives at `POST /api/documents/query`, the following workflow runs inside [DocumentController.js](file:///c:/Users/NITIN%20SINGH/Documents/IntelliDoc/Server/controllers/DocumentController.js):
 
 ### 4.1 Chat State & Dialogue Recording
-- The active conversation is retrieved from MongoDB using `{ userId: req.user._id, documentId }`.
-- If no prior conversation exists, a new `Chat` session is instantiated.
-- The user's question is pushed to `chat.messages` with `{ type: 'user', content: question }` and saved immediately.
+- The active session is fetched using `{ userId: req.user._id, documentId }`.
+- User question is appended to `chat.messages` with `{ type: 'user', content: question }` and saved immediately.
 
 ### 4.2 Query Vectorization
-The incoming text question is passed into `generateEmbedding(question)` using `gemini-embedding-001`, yielding a 768-dimensional query vector.
+The question is transformed into a 768-dimensional vector via `generateEmbedding(question)`.
 
-### 4.3 Multi-Tiered Semantic Retrieval Engine
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Client / User
-    participant DC as DocumentController
-    participant Atlas as MongoDB Atlas Vector Search
-    participant Gemini as Gemini 3.5 Flash Lite
-
-    User->>DC: POST /api/documents/query (question, documentId)
-    DC->>Atlas: Find Document & Chat Session
-    DC->>DC: generateEmbedding(question)
-    
-    rect rgb(240, 248, 255)
-    note right of DC: Tier 1: MongoDB Atlas $vectorSearch
-    DC->>Atlas: Chunk.aggregate([$vectorSearch, $project])
-    alt Atlas Vector Search Index Active
-        Atlas-->>DC: Return top 3 matched chunks with vectorSearchScore
-    else Index building, offline, or error
-        rect rgb(255, 250, 240)
-        note right of DC: Tier 2: In-Memory Cosine Fallback
-        DC->>Atlas: Chunk.find({ documentId })
-        Atlas-->>DC: Return all chunks with embeddings
-        DC->>DC: findRelevantChunks(questionEmbedding, chunks, topK=3)
-        end
-    end
-    end
-
-    alt No chunks matched in Tier 1 or Tier 2
-        note right of DC: Tier 3: Content Head Truncation
-        DC->>DC: contextText = document.content.slice(0, 2000)
-    end
-
-    DC->>DC: Assemble Prompt (Context + Chat History)
-    DC->>Gemini: generateContent(prompt)
-    Gemini-->>DC: aiResponse text
-    DC->>Atlas: Append AI response to ChatModel & update Document
-    DC-->>User: { answer: aiResponse }
-```
-
-#### Tier 1: MongoDB Atlas Vector Search (`$vectorSearch`)
+### 4.3 Atlas Vector Search (`$vectorSearch`)
 Executed directly on the `chunks` collection:
 ```javascript
 const relevantChunks = await Chunk.aggregate([
@@ -205,7 +154,10 @@ const relevantChunks = await Chunk.aggregate([
             numCandidates: 30,
             limit: 3,
             filter: {
-                documentId: { $eq: new mongoose.Types.ObjectId(documentId) }
+                $and: [
+                    { documentId: { $eq: new mongoose.Types.ObjectId(documentId) } },
+                    { userId: { $eq: new mongoose.Types.ObjectId(req.user._id) } }
+                ]
             }
         }
     },
@@ -218,29 +170,17 @@ const relevantChunks = await Chunk.aggregate([
     }
 ]);
 ```
-- **Pre-Filtering**: Scopes nearest-neighbor search specifically to the target document (`filter: { documentId: { $eq: ObjectId(documentId) } }`) *before* nearest-neighbor calculations occur.
-- **Score Metadata**: Returns the exact cosine similarity score via `{ $meta: 'vectorSearchScore' }`.
-
-#### Tier 2: In-Memory Cosine Similarity Fallback (`findRelevantChunks`)
-If the Atlas Search index is not yet built or throws an error, the controller automatically falls back to in-memory cosine ranking:
-- Mathematical formulation:
-  $$\text{Cosine Similarity}(\mathbf{A}, \mathbf{B}) = \frac{\mathbf{A} \cdot \mathbf{B}}{\|\mathbf{A}\|_2 \|\mathbf{B}\|_2} = \frac{\sum_{i=1}^{n} A_i B_i}{\sqrt{\sum_{i=1}^{n} A_i^2} \sqrt{\sum_{i=1}^{n} B_i^2}}$$
-- Fetches all chunks for `documentId` and ranks them in CPU memory, ensuring zero downtime for the user.
-
-#### Tier 3: Failsafe Fallback
-If no chunks are found, defaults to the first 2,000 characters of the document:
-```javascript
-const contextText = relevantChunks.length > 0 
-    ? relevantChunks.map(chunk => chunk.text).join('\n\n')
-    : document.content.slice(0, 2000);
-```
+- **Compound Pre-Filtering (Defense-in-Depth)**: Pre-filters search space by both `documentId` and `userId` *before* nearest-neighbor calculation runs. This prevents cross-tenant data leakage.
+- **Empty Retrieval Handling**: If no chunks are found matching the query, the system cleanly returns:
+  `"I could not find any relevant sections in this document to answer your question."`
+- **Context Assembly**: If chunks match, top-3 chunk texts are joined with `\n\n`.
 
 ---
 
 ## 5. Deep Dive: Prompt Engineering & Generation Layer
 
 ### 5.1 Conversation History Windowing
-Extracts the last 6 messages to provide a 3-turn dialogue window:
+Extracts the last 6 messages to preserve a 3-turn dialogue window:
 ```javascript
 const recentMessages = chat.messages.slice(-6);
 const chatHistory = recentMessages.map(msg => `${msg.type}: ${msg.content}`).join('\n');
@@ -260,18 +200,19 @@ const chatHistory = recentMessages.map(msg => `${msg.type}: ${msg.content}`).joi
 ## 6. Document Lifecycle & Cleanup
 
 When a document is deleted via `DELETE /api/documents/:documentId`:
+
 ```javascript
 await Document.findOneAndDelete({ _id: documentId, userId: req.user._id });
 await Chat.findOneAndDelete({ userId: req.user._id, documentId });
 await Chunk.deleteMany({ documentId, userId: req.user._id });
 ```
-All document metadata, chat history, and vector embeddings are removed in a single atomic database pass.
+All document metadata, chat history, and vector embeddings are removed in sequential cascading steps.
 
 ---
 
 ## 7. Atlas Vector Search Index Configuration
 
-To enable hardware-accelerated Vector Search on MongoDB Atlas (Free M0 Tier):
+To enable Approximate Nearest Neighbor (ANN) Vector Search on MongoDB Atlas:
 
 ### Atlas Search Index Definition
 - **Collection**: `chunks` (Database: `intellidoc`)
@@ -300,17 +241,15 @@ To enable hardware-accelerated Vector Search on MongoDB Atlas (Free M0 Tier):
 
 ---
 
-## 8. Architectural Strengths & Design Highlights
+## 8. Architectural Strengths
 
-1. **Cloud-Native Unified Architecture**:
-   - All document metadata, user sessions, chat history, and dense vector embeddings reside within MongoDB Atlas. No external vector service or background daemons are required.
-2. **Document Scalability via Standalone Chunks**:
-   - Storing chunk vectors in a dedicated `chunks` collection guarantees documents of any size (e.g. 100+ pages) will never exceed MongoDB's 16MB document size ceiling.
-3. **Hardware-Accelerated Vector Search with Document-Level Pre-Filtering**:
-   - Queries execute through native `$vectorSearch` with `{ documentId: { $eq: ObjectId(documentId) } }`, filtering the search space *before* ANN calculation to prevent cross-document leakage and guarantee high performance.
-4. **Dual-Tier Fault Tolerance**:
-   - Built-in fallback to in-memory cosine ranking over chunk vectors ensures that queries succeed even if the vector index is initializing or temporarily unavailable.
-5. **Rate-Limit & Memory Protection**:
-   - Ingestion processes chunks sequentially with deliberate throttling (200ms) and garbage collection hooks to ensure stability under free-tier API quotas.
-6. **Atomic Cascading Deletion**:
-   - Removing a document purges its document record, chat session, and all associated vector chunks cleanly with zero orphaned records.
+1. **Simplicity & Predictability**:
+   - Single retrieval path through MongoDB Atlas Vector Search. No complex fallback layers, in-memory scans, or unpredictable head-truncation logic.
+2. **Cloud-Native Unified Architecture**:
+   - All document metadata, user sessions, chat history, and dense vector embeddings reside within MongoDB Atlas. No external vector services or background daemons are needed.
+3. **Defense-in-Depth Pre-Filtering**:
+   - Queries scope candidate vectors by both `{ documentId, userId }` before ANN calculation, preventing cross-tenant data exposure.
+4. **Strict Dimension Alignment**:
+   - Explicitly configuring `outputDimensionality: 768` on `gemini-embedding-001` ensures 100% compatibility with the Atlas index schema.
+5. **No Hallucination on Zero Context**:
+   - If the vector index finds no matches, the system explicitly answers that no relevant sections were found rather than guessing.
