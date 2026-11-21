@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { formatMarkdown } from '../utils/markdown';
 
 const DocumentRAG = () => {
   const [file, setFile] = useState(null);
@@ -111,21 +112,9 @@ const DocumentRAG = () => {
               <div className="mt-6 p-4 bg-blue-50 rounded">
                 <h3 className="font-semibold mb-2">Answer:</h3>
                 <div 
-                  className="whitespace-pre-wrap"
+                  className="markdown-body"
                   dangerouslySetInnerHTML={{
-                    __html: answer.replace(
-                      /```(\w*)\n?([\s\S]*?)```/g,
-                      (match, lang, code) => {
-                        const cleanCode = code.replace(/^\s*\w+\s*\n?/, '').trim();
-                        const languageLabel = lang || '';
-                        const escapedCode = cleanCode
-                          .replace(/&/g, "&amp;")
-                          .replace(/</g, "&lt;")
-                          .replace(/>/g, "&gt;");
-                        
-                        return `<div class="code-block"><span class="language-label">${languageLabel}</span><pre><code>${escapedCode}</code></pre></div>`;
-                      }
-                    )
+                    __html: formatMarkdown(answer)
                   }}
                 />
               </div>

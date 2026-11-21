@@ -7,7 +7,7 @@ import { EMAIL_VERIFY_TEMPLATE, PASSWORD_RESET_TEMPLATE } from '../config/emailT
 
 const generateAndSetTokens = async (user, res) => {
     const accessToken = jwt.sign(
-        { id: user._id },
+        { id: user._id },  
         process.env.JWT_SECRET_KEY,
         { expiresIn: '15m' }
     );

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import Spinner from '../components/shared/Spinner';
 import Button from '../components/shared/Button';
 import axios from 'axios';
+import { formatMarkdown } from '../utils/markdown';
 
 const Dashboard = () => {
     const { user, loading } = useAuth();
@@ -29,22 +30,7 @@ const Dashboard = () => {
     };
 
     const formatMessage = (content) => {
-        const codeBlockRegex = /```([\s\S]*?)```/g;
-        let formattedContent = content.replace(codeBlockRegex, (match, code) => {
-            const codeId = Math.random().toString(36).substr(2, 9);
-            return `<div class="code-block">
-                <button class="copy-button" onclick="copyCode('${codeId}')" title="Copy code">Copy</button>
-                <pre id="${codeId}">${code.trim()}</pre>
-            </div>`;
-        });
-
-        formattedContent = formattedContent.replace(/\`(.*?)\`/g, '<code class="bg-gray-200 px-1 rounded text-sm">$1</code>');
-        
-        formattedContent = formattedContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        
-        formattedContent = formattedContent.replace(/\n/g, '<br>');
-        
-        return formattedContent;
+        return formatMarkdown(content);
     };
 
 
@@ -311,7 +297,7 @@ const Dashboard = () => {
                                                                     ? 'bg-blue-500 text-white' 
                                                                     : 'bg-gray-100 border'
                                                             }`}>
-                                                                <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{
+                                                                <div className="markdown-body" dangerouslySetInnerHTML={{
                                                                     __html: formatMessage(msg.content)
                                                                 }} />
                                                             </div>
