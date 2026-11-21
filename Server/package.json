@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "eval": "node eval/runEval.js",
+    "eval:generate": "node eval/generateDataset.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -20,7 +22,7 @@
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.10.0",
     "mongoose": "^7.5.0",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.0.2",
     "nodemailer": "^6.9.4",
     "pdfreader": "^3.0.7"
   }

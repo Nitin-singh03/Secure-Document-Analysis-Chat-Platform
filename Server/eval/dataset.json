@@ -1,0 +1,72 @@
+[
+  {
+    "question": "What database tier does the IntelliDoc RAG system natively run on?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 0,
+    "chunkSnippet": "# IntelliDoc RAG Architecture Technical Report\n\n## 1. Executive Summary & Architecture Overview\n\nThi"
+  },
+  {
+    "question": "What is the first step implemented in the IntelliDoc Vector RAG pipeline?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 0,
+    "chunkSnippet": "# IntelliDoc RAG Architecture Technical Report\n\n## 1. Executive Summary & Architecture Overview\n\nThi"
+  },
+  {
+    "question": "What model powers the dense vector embeddings and what is its dimension constraint?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 1,
+    "chunkSnippet": "ing** with configurable chunk sizes and overlap.\n2. **Dense Vector Embeddings** powered by Google Ge"
+  },
+  {
+    "question": "Where are chunks stored as standalone documents in the retrieval layer?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 1,
+    "chunkSnippet": "ing** with configurable chunk sizes and overlap.\n2. **Dense Vector Embeddings** powered by Google Ge"
+  },
+  {
+    "question": "How does the system handle newly created documents that have 0 retrieved chunks during Atlas indexing propagation?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 2,
+    "chunkSnippet": " index (`vector_index`) configured with cosine similarity.\n   - Compound pre-filtering scoped by bot"
+  },
+  {
+    "question": "What action does the system take if no relevant sections match an established document instead of hallucinating?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 2,
+    "chunkSnippet": " index (`vector_index`) configured with cosine similarity.\n   - Compound pre-filtering scoped by bot"
+  },
+  {
+    "question": "What is the role of Contextual History Augmentation in the pipeline?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 3,
+    "chunkSnippet": "evant context found rather than hallucinating.\n5. **Contextual History Augmentation**: Prior dialogu"
+  },
+  {
+    "question": "Which Gemini model is configured by default for handling the injected chunks and dialogue history?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 3,
+    "chunkSnippet": "evant context found rather than hallucinating.\n5. **Contextual History Augmentation**: Prior dialogu"
+  },
+  {
+    "question": "What is the maximum file size and file count allowed by the Multer limits during document ingestion?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 4,
+    "chunkSnippet": "graph Ingestion [\"Stage 1: Document Ingestion & Atlas Vector Indexing\"]\n        A[\"Incoming File (PD"
+  },
+  {
+    "question": "What chunk size and overlap parameters are used in the chunkText function?",
+    "documentId": "6b01fb7b7bd423c7c12aab9d",
+    "userId": "6b01fb7a7bd423c7c12aab9b",
+    "groundTruthChunkIndex": 4,
+    "chunkSnippet": "graph Ingestion [\"Stage 1: Document Ingestion & Atlas Vector Indexing\"]\n        A[\"Incoming File (PD"
+  }
+]

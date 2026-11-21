@@ -1,9 +1,9 @@
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 const renderer = new marked.Renderer();
 
 renderer.code = function ({ text, lang }) {
-    const codeId = 'code-' + Math.random().toString(36).substring(2, 9);
     const escapedCode = (text || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -12,8 +12,8 @@ renderer.code = function ({ text, lang }) {
 
     return `<div class="code-block">
         ${languageLabel ? `<span class="language-label">${languageLabel}</span>` : ''}
-        <button class="copy-button" onclick="copyCode('${codeId}')" title="Copy code">Copy</button>
-        <pre><code id="${codeId}">${escapedCode}</code></pre>
+        <button class="copy-button" data-action="copy" title="Copy code">Copy</button>
+        <pre><code>${escapedCode}</code></pre>
     </div>`;
 };
 
@@ -26,10 +26,12 @@ marked.use({
 export const formatMarkdown = (content) => {
     if (!content) return '';
     try {
-        return marked.parse(content);
+        const rawHtml = marked.parse(content);
+        return DOMPurify.sanitize(rawHtml, {
+            ADD_ATTR: ['data-action']
+        });
     } catch (err) {
         console.error('Markdown parse error:', err);
-        return content;
+        return DOMPurify.sanitize(content);
     }
 };
-

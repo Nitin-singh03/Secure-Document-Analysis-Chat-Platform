@@ -12,4 +12,6 @@ const chatSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
+chatSchema.index({ userId: 1, documentId: 1 }, { unique: true });
+
 export default mongoose.model('Chat', chatSchema);

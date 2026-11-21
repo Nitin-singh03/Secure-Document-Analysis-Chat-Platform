@@ -27,7 +27,11 @@ export const generateEmbedding = async (text, retries = 3) => {
                 content: { parts: [{ text }] },
                 outputDimensionality: 768
             });
-            return result.embedding.values;
+            const values = result.embedding?.values;
+            if (!values || values.length !== 768) {
+                throw new Error(`Invalid embedding length: expected 768, got ${values ? values.length : 0}`);
+            }
+            return values;
         } catch (error) {
             console.error(`Embedding attempt ${i + 1} failed:`, error.message);
             if (i === retries - 1) throw error;

@@ -9,7 +9,13 @@ import DocumentRouter from './routes/DocumentRoutes.js'
 
 const app = express()
 const PORT = process.env.PORT || 4000
-connectDB()
+
+app.set('trust proxy', 1)
+
+connectDB().catch((err) => {
+    console.error('Fatal database connection error:', err.message)
+    process.exit(1)
+})
 
 app.use(express.json())
 app.use(cookieParser())
