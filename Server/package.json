@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "eval": "node eval/runEval.js",
-    "eval:generate": "node eval/generateDataset.js"
+    "dev": "nodemon index.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

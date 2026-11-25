@@ -7,6 +7,7 @@ import { PdfReader } from 'pdfreader';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { chunkText, generateEmbedding } from '../vectorUtils.js';
 import { retrieveChunks } from '../retrieval.js';
+import { buildPrompt } from '../prompt.js';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
@@ -258,27 +259,12 @@ const queryDocuments = async (req, res) => {
         
         // 6. Synthesize answer with Gemini
         const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-        const prompt = `You are a helpful assistant that formats responses in a structured, readable way. Answer based on the relevant document sections and conversation history.
-
-Document: ${document.filename}
-Relevant Content: ${contextText}
-
-Conversation History:
-${chatHistory}
-
-Question: ${question}
-
-IMPORTANT: Format your response with:
-- Use **bold** for important points
-- Use \`code\` for technical terms, variables, functions
-- Use triple backticks for multi-line code blocks, examples, or structured data
-- Use numbered lists for steps
-- Use bullet points for features
-- Use line breaks for better readability
-- Highlight key information with proper formatting
-- Structure your answer in sections when appropriate
-
-Provide a detailed, well-formatted answer based on the relevant document content:`;
+        const prompt = buildPrompt({
+            filename: document.filename,
+            contextText,
+            chatHistory,
+            question
+        });
         
         const result = await model.generateContent(prompt);
         const aiResponse = result.response.text();
