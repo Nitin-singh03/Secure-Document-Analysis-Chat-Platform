@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "ingest:folder": "node rag/ingest/ingestFolder.js"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
@@ -22,6 +23,7 @@
     "mongoose": "^7.5.0",
     "multer": "^2.0.2",
     "nodemailer": "^6.9.4",
-    "pdfreader": "^3.0.7"
+    "pdfreader": "^3.0.7",
+    "picomatch": "^4.0.7"
   }
 }
