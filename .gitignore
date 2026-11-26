@@ -1,1 +1,9 @@
-IntelliDoc.zip
+node_modules/
+.env
+.env.*
+!.env.example
+Client/dist/
+Server/eval/runs/*/results.jsonl
+uploads/
+*.zip
+intellidoc_scalable_knowledge_base_rag_plan.md

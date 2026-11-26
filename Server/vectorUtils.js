@@ -1,6 +1,12 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+let ai;
+const getAI = () => {
+    if (!ai) {
+        ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
+    }
+    return ai;
+};
 
 // Chunk text into smaller pieces using a sliding window
 export const chunkText = (text, chunkSize = 600, overlap = 50) => {
@@ -22,12 +28,12 @@ export const chunkText = (text, chunkSize = 600, overlap = 50) => {
 export const generateEmbedding = async (text, retries = 3) => {
     for (let i = 0; i < retries; i++) {
         try {
-            const model = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
-            const result = await model.embedContent({
-                content: { parts: [{ text }] },
-                outputDimensionality: 768
+            const result = await getAI().models.embedContent({
+                model: 'gemini-embedding-001',
+                contents: text,
+                config: { outputDimensionality: 768 }
             });
-            const values = result.embedding?.values;
+            const values = result.embeddings?.[0]?.values;
             if (!values || values.length !== 768) {
                 throw new Error(`Invalid embedding length: expected 768, got ${values ? values.length : 0}`);
             }

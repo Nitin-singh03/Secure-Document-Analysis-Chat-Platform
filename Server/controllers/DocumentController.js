@@ -4,12 +4,12 @@ import Chunk from '../models/ChunkModel.js';
 import Chat from '../models/ChatModel.js';
 import mammoth from 'mammoth';
 import { PdfReader } from 'pdfreader';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { chunkText, generateEmbedding } from '../vectorUtils.js';
 import { retrieveChunks } from '../retrieval.js';
 import { buildPrompt } from '../prompt.js';
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
 const extractPdfText = (buffer) => {
@@ -158,7 +158,7 @@ const uploadDocument = async (req, res) => {
             userId: req.user._id,
             text: c.text,
             embedding: c.embedding,
-            index: c.index
+            chunkIndex: c.index
         }));
 
         try {
@@ -258,7 +258,6 @@ const queryDocuments = async (req, res) => {
         const contextText = relevantChunks.map(chunk => chunk.text).join('\n\n');
         
         // 6. Synthesize answer with Gemini
-        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
         const prompt = buildPrompt({
             filename: document.filename,
             contextText,
@@ -266,8 +265,11 @@ const queryDocuments = async (req, res) => {
             question
         });
         
-        const result = await model.generateContent(prompt);
-        const aiResponse = result.response.text();
+        const result = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: prompt
+        });
+        const aiResponse = result.text;
 
         // 7. Atomically append both user question and AI response together
         await Chat.updateOne(
