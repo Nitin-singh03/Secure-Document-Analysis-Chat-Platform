@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { authService, documentService } from '../services/api';
+import { authService, documentService, collectionService, chatService } from '../services/api';
 import toast from 'react-hot-toast';
 import Spinner from '../components/shared/Spinner';
 import Button from '../components/shared/Button';
@@ -12,6 +12,9 @@ const Dashboard = () => {
     const navigate = useNavigate();
     const [file, setFile] = useState(null);
     const [documents, setDocuments] = useState([]);
+    const [collections, setCollections] = useState([]);
+    const [selectedCollection, setSelectedCollection] = useState('');
+    const [queryScope, setQueryScope] = useState('document'); // 'collection' | 'document'
     const [isLoading, setIsLoading] = useState(false);
     const [loadingStates, setLoadingStates] = useState({});
     const [selectedDocument, setSelectedDocument] = useState(null);
@@ -59,12 +62,27 @@ const Dashboard = () => {
 
     useEffect(() => {
         if (user) {
+            loadCollections();
             loadDocuments();
         }
     }, [user]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const loadCollections = async () => {
+        try {
+            const response = await collectionService.list();
+            const cols = response.data.collections || [];
+            setCollections(cols);
+            if (!selectedCollection && cols.length > 0) {
+                setSelectedCollection(cols[0]._id);
+            }
+        } catch (error) {
+            console.error('Error loading collections:', error);
+            setCollections([]);
+        }
     };
 
     const loadDocuments = async () => {
@@ -109,12 +127,17 @@ const Dashboard = () => {
     };
 
     const handleSendMessage = async () => {
-        if (!currentMessage.trim() || !selectedDocument) return;
-        
-        const currentDoc = documents.find(d => d._id === selectedDocument);
-        if (currentDoc && currentDoc.status === 'failed') {
-            toast.error('This document failed extraction and cannot be queried.');
-            return;
+        const isCollectionScope = queryScope === 'collection';
+        if (!currentMessage.trim()) return;
+        if (isCollectionScope && !selectedCollection) return;
+        if (!isCollectionScope && !selectedDocument) return;
+
+        if (!isCollectionScope) {
+            const currentDoc = documents.find(d => d._id === selectedDocument);
+            if (currentDoc && currentDoc.status === 'failed') {
+                toast.error('This document failed extraction and cannot be queried.');
+                return;
+            }
         }
 
         const messageText = currentMessage.trim();
@@ -126,24 +149,33 @@ const Dashboard = () => {
             setTimeout(scrollToBottom, 50);
             return newMessages;
         });
-        
-        setLoadingStates(prev => ({ ...prev, [selectedDocument]: true }));
+
+        const loadingKey = isCollectionScope ? `col:${selectedCollection}` : selectedDocument;
+        setLoadingStates(prev => ({ ...prev, [loadingKey]: true }));
         
         try {
-            const response = await documentService.query(messageText, selectedDocument);
-            const aiMessage = { type: 'ai', content: response.data.answer };
+            const response = isCollectionScope
+                ? await chatService.query({ collectionId: selectedCollection, question: messageText })
+                : await documentService.query(messageText, selectedDocument);
+            const aiMessage = {
+                type: 'ai',
+                content: response.data.answer,
+                sources: response.data.sources || []
+            };
             setMessages(prev => {
                 const newMessages = [...prev, aiMessage];
                 setTimeout(scrollToBottom, 100);
                 return newMessages;
             });
             
-            // Move active document to top of list
-            setDocuments(prev => {
-                const activeDoc = prev.find(doc => doc._id === selectedDocument);
-                const otherDocs = prev.filter(doc => doc._id !== selectedDocument);
-                return activeDoc ? [activeDoc, ...otherDocs] : prev;
-            });
+            if (!isCollectionScope) {
+                // Move active document to top of list
+                setDocuments(prev => {
+                    const activeDoc = prev.find(doc => doc._id === selectedDocument);
+                    const otherDocs = prev.filter(doc => doc._id !== selectedDocument);
+                    return activeDoc ? [activeDoc, ...otherDocs] : prev;
+                });
+            }
         } catch (error) {
             const errorMsg = error.response?.data?.message || 'Sorry, I encountered an error processing your question.';
             const errorMessage = { type: 'ai', content: errorMsg };
@@ -153,12 +185,13 @@ const Dashboard = () => {
                 return newMessages;
             });
         }
-        setLoadingStates(prev => ({ ...prev, [selectedDocument]: false }));
+        setLoadingStates(prev => ({ ...prev, [loadingKey]: false }));
     };
 
     const selectDocument = async (docId) => {
         setCurrentMessage('');
         setSelectedDocument(docId);
+        setQueryScope('document');
         setShowUpload(false);
 
         const currentDoc = documents.find(d => d._id === docId);
@@ -231,6 +264,59 @@ const Dashboard = () => {
                 <div className="fixed inset-0 top-16 bg-gray-50">
                     {/* Fixed Sidebar */}
                     <div className="fixed left-0 w-64 bg-gray-900 text-white p-4 overflow-y-auto" style={{height: 'calc(100vh - 64px)', top: '64px'}}>
+                        <div className="mb-3">
+                            <label className="block text-xs font-semibold text-gray-400 mb-1">Collection</label>
+                            <select
+                                value={selectedCollection}
+                                onChange={async (e) => {
+                                    const colId = e.target.value;
+                                    setSelectedCollection(colId);
+                                    if (queryScope === 'collection') {
+                                        setShowUpload(false);
+                                        try {
+                                            const res = await chatService.getHistory(colId);
+                                            setMessages(res.data.messages || []);
+                                        } catch {
+                                            setMessages([]);
+                                        }
+                                    }
+                                }}
+                                className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700"
+                            >
+                                {collections.map((col) => (
+                                    <option key={col._id} value={col._id}>{col.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="mb-3 flex rounded overflow-hidden border border-gray-700 text-xs">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    setQueryScope('collection');
+                                    setShowUpload(false);
+                                    if (selectedCollection) {
+                                        try {
+                                            const res = await chatService.getHistory(selectedCollection);
+                                            setMessages(res.data.messages || []);
+                                        } catch {
+                                            setMessages([]);
+                                        }
+                                    }
+                                }}
+                                className={`flex-1 py-1.5 ${queryScope === 'collection' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300'}`}
+                            >
+                                Collection
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setQueryScope('document')}
+                                className={`flex-1 py-1.5 ${queryScope === 'document' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300'}`}
+                            >
+                                Document
+                            </button>
+                        </div>
+
                         <Button
                             onClick={startNewChat}
                             className="w-full mb-4 !bg-gray-700 hover:!bg-gray-600"
@@ -300,13 +386,13 @@ const Dashboard = () => {
                         ) : (
                             <div className="relative flex flex-col h-full">
                                 <div className="flex-1 overflow-y-auto p-4 pb-24">
-                                    {!selectedDocument ? (
+                                    {queryScope === 'document' && !selectedDocument ? (
                                         <div className="text-center text-gray-500 mt-20">
                                             <p>Select a document to start chatting</p>
                                         </div>
                                     ) : messages.length === 0 ? (
                                         <div className="text-center text-gray-500 mt-20">
-                                            <p>Ask me anything about this document!</p>
+                                            <p>{queryScope === 'collection' ? 'Ask me anything about this collection!' : 'Ask me anything about this document!'}</p>
                                         </div>
                                     ) : (
                                         <div className="max-w-4xl mx-auto">
@@ -320,10 +406,27 @@ const Dashboard = () => {
                                                         <div className="markdown-body" dangerouslySetInnerHTML={{
                                                             __html: formatMessage(msg.content)
                                                         }} />
+                                                        {msg.type === 'ai' && Array.isArray(msg.sources) && msg.sources.length > 0 && (
+                                                            <div className="mt-3 pt-2 border-t border-gray-300 text-xs text-gray-700 space-y-1.5">
+                                                                <div className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Sources</div>
+                                                                {msg.sources.map((src) => (
+                                                                    <div key={src.id} className="bg-white p-2 rounded border border-gray-200">
+                                                                        <div className="font-medium text-gray-800">
+                                                                            [{src.id}] {src.sourcePath || src.filename}
+                                                                            {src.sectionPath?.length > 0 && ` > ${src.sectionPath.join(' > ')}`}
+                                                                            {src.pageStart != null && ` (p. ${src.pageStart}${src.pageEnd && src.pageEnd !== src.pageStart ? `-${src.pageEnd}` : ''})`}
+                                                                        </div>
+                                                                        {src.snippet && (
+                                                                            <p className="text-gray-600 mt-0.5 line-clamp-2">{src.snippet}</p>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}
-                                            {loadingStates[selectedDocument] && (
+                                            {(loadingStates[queryScope === 'collection' ? `col:${selectedCollection}` : selectedDocument]) && (
                                                 <div className="text-left mb-4">
                                                     <div className="inline-block p-3 rounded-lg bg-gray-100 border">
                                                         Thinking...
@@ -344,9 +447,9 @@ const Dashboard = () => {
                                             value={currentMessage || ''}
                                             onChange={(e) => setCurrentMessage(e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                            placeholder="Ask about this document (max 2000 chars)..."
+                                            placeholder={queryScope === 'collection' ? 'Ask about this collection (max 2000 chars)...' : 'Ask about this document (max 2000 chars)...'}
                                             className="flex-1 p-3 border rounded-lg"
-                                            disabled={loadingStates[selectedDocument] || !selectedDocument}
+                                            disabled={loadingStates[queryScope === 'collection' ? `col:${selectedCollection}` : selectedDocument] || (queryScope === 'collection' ? !selectedCollection : !selectedDocument)}
                                         />
                                         <Button
                                             onClick={handleSendMessage}

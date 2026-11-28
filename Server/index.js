@@ -7,6 +7,8 @@ import connectDB from './config/mongodb.js'
 import AuthRouter from './routes/AuthRoutes.js'
 import UserRouter from './routes/UserRoutes.js'
 import DocumentRouter from './routes/DocumentRoutes.js'
+import CollectionRouter from './routes/CollectionRoutes.js'
+import ChatRouter from './routes/ChatRoutes.js'
 
 const app = express()
 const PORT = process.env.PORT || 4000
@@ -42,6 +44,8 @@ app.get('/readyz', (req, res) => {
 app.use('/api/auth', AuthRouter)
 app.use('/api/user', UserRouter)
 app.use('/api/documents', DocumentRouter)
+app.use('/api/collections', CollectionRouter)
+app.use('/api/chat', ChatRouter)
 
 const server = app.listen(PORT, () => {
     console.log(`Server running on PORT : ${PORT}`)

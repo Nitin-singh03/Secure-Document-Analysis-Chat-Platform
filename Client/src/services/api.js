@@ -70,5 +70,17 @@ export const documentService = {
     deleteDocument: (documentId) => api.delete(`/documents/${documentId}`),
 };
 
+export const collectionService = {
+    list: () => api.get('/collections'),
+    create: (data) => api.post('/collections', data),
+    remove: (collectionId) => api.delete(`/collections/${collectionId}`),
+};
+
+export const chatService = {
+    query: (payload) => api.post('/chat/query', payload),
+    getHistory: (collectionId, documentId) =>
+        api.get('/chat/history', { params: { collectionId, ...(documentId ? { documentId } : {}) } }),
+};
+
 export const getGoogleLoginUrl = () => `${import.meta.env.VITE_SERVER_URI}/api/auth/google`;
 export const getGithubLoginUrl = () => `${import.meta.env.VITE_SERVER_URI}/api/auth/github`;

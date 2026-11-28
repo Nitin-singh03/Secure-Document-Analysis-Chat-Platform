@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
+import crypto from 'node:crypto';
 import Document from '../models/DocumentModel.js';
+import Collection from '../models/CollectionModel.js';
 import Chunk from '../models/ChunkModel.js';
 import Chat from '../models/ChatModel.js';
 import mammoth from 'mammoth';
@@ -8,6 +10,10 @@ import { GoogleGenAI } from '@google/genai';
 import { chunkText, generateEmbedding } from '../vectorUtils.js';
 import { retrieveChunks } from '../retrieval.js';
 import { buildPrompt } from '../prompt.js';
+import { buildChunkerVersion } from '../rag/pipelines.js';
+import { answerQuestion } from '../rag/answer.js';
+
+const sha256 = (val) => crypto.createHash('sha256').update(val, 'utf8').digest('hex');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
@@ -137,17 +143,29 @@ const uploadDocument = async (req, res) => {
 
         const skippedChunks = chunks.length - chunksData.length;
         const status = skippedChunks > 0 ? 'partial' : 'ready';
+        const chunkerVersion = buildChunkerVersion('v0');
+
+        let defaultCollection = await Collection.findOne({ userId: req.user._id, name: 'Default' });
+        if (!defaultCollection) {
+            defaultCollection = await Collection.create({ userId: req.user._id, name: 'Default' });
+        }
 
         // 3. Save parent document record
         const document = new Document({
             userId: req.user._id,
+            collectionId: defaultCollection._id,
             filename: originalName,
+            sourcePath: originalName,
+            folderPath: [],
+            tags: [],
+            authority: 'normal',
             content,
             totalChunks: chunks.length,
             indexedChunks: chunksData.length,
             skippedChunks,
             status,
-            extractionFailed: false
+            extractionFailed: false,
+            ingestVersions: [{ chunkerVersion, chunks: chunksData.length, ingestedAt: new Date() }]
         });
         
         await document.save();
@@ -156,8 +174,22 @@ const uploadDocument = async (req, res) => {
         const chunkDocs = chunksData.map(c => ({
             documentId: document._id,
             userId: req.user._id,
+            collectionId: defaultCollection._id,
+            chunkerVersion,
+            status: 'active',
+            filename: originalName,
+            sourcePath: originalName,
+            folderPath: [],
+            tags: [],
+            authority: 'normal',
             text: c.text,
             embedding: c.embedding,
+            embeddingModel: 'gemini-embedding-001',
+            embeddingDim: 768,
+            embedInput: 'text',
+            embedTaskType: 'none',
+            contentHash: sha256(c.text),
+            embedHash: sha256(`${c.text}|gemini-embedding-001|768|none`),
             chunkIndex: c.index
         }));
 
@@ -214,27 +246,55 @@ const queryDocuments = async (req, res) => {
         // 1. Read existing chat first before mutating state (prevents dangling user questions on errors)
         const chat = await Chat.findOne({ userId: req.user._id, documentId });
         const recent = (chat?.messages ?? []).slice(-6);
-        const chatHistory = recent.length > 0
-            ? recent.map(msg => `${msg.type}: ${msg.content}`).join('\n')
-            : 'None';
-        
-        // 2. Generate query vector embedding (768 dimensions)
-        const questionEmbedding = await generateEmbedding(question);
-        
-        // 3. Retrieve top-3 relevant chunks using Atlas Vector Search via retrieveChunks
-        const relevantChunks = await retrieveChunks({
-            documentId,
-            userId: req.user._id,
-            queryEmbedding: questionEmbedding,
-            topK: 3
-        });
+
+        let aiResponse = null;
+        let sources = [];
+
+        if (document.collectionId) {
+            const result = await answerQuestion({
+                userId: req.user._id,
+                collectionId: document.collectionId,
+                documentIds: [document._id],
+                question,
+                history: recent,
+                documentLabel: document.filename
+            });
+            aiResponse = result.answer;
+            sources = result.sources;
+        } else {
+            const chatHistory = recent.length > 0
+                ? recent.map(msg => `${msg.type}: ${msg.content}`).join('\n')
+                : 'None';
+            const questionEmbedding = await generateEmbedding(question);
+            const relevantChunks = await retrieveChunks({
+                documentId,
+                userId: req.user._id,
+                queryEmbedding: questionEmbedding,
+                topK: 3
+            });
+
+            if (relevantChunks && relevantChunks.length > 0) {
+                const contextText = relevantChunks.map(chunk => chunk.text).join('\n\n');
+                const prompt = buildPrompt({
+                    filename: document.filename,
+                    contextText,
+                    chatHistory,
+                    question
+                });
+                const result = await ai.models.generateContent({
+                    model: GEMINI_MODEL,
+                    contents: prompt
+                });
+                aiResponse = result.text;
+            }
+        }
 
         // 4. Handle empty retrieval
-        if (!relevantChunks || relevantChunks.length === 0) {
+        if (!aiResponse) {
             const stillIndexing = Date.now() - new Date(document.createdAt).getTime() < 60_000;
             if (stillIndexing) {
                 // Return immediately without writing to chat history
-                return res.json({ answer: 'This document is still being indexed. Please try again in a few seconds.' });
+                return res.json({ answer: 'This document is still being indexed. Please try again in a few seconds.', sources: [] });
             }
 
             const noMatchAnswer = 'I could not find any relevant sections in this document to answer your question.';
@@ -251,25 +311,8 @@ const queryDocuments = async (req, res) => {
                 },
                 { upsert: true }
             );
-            return res.json({ answer: noMatchAnswer });
+            return res.json({ answer: noMatchAnswer, sources: [] });
         }
-
-        // 5. Assemble retrieved context
-        const contextText = relevantChunks.map(chunk => chunk.text).join('\n\n');
-        
-        // 6. Synthesize answer with Gemini
-        const prompt = buildPrompt({
-            filename: document.filename,
-            contextText,
-            chatHistory,
-            question
-        });
-        
-        const result = await ai.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: prompt
-        });
-        const aiResponse = result.text;
 
         // 7. Atomically append both user question and AI response together
         await Chat.updateOne(
@@ -277,7 +320,7 @@ const queryDocuments = async (req, res) => {
             {
                 $push: { messages: { $each: [
                     { type: 'user', content: question, timestamp: new Date() },
-                    { type: 'ai', content: aiResponse, timestamp: new Date() }
+                    { type: 'ai', content: aiResponse, sources, timestamp: new Date() }
                 ] } },
                 $set: { updatedAt: new Date() },
                 $setOnInsert: { createdAt: new Date() }
@@ -287,7 +330,7 @@ const queryDocuments = async (req, res) => {
 
         await Document.findByIdAndUpdate(documentId, { updatedAt: new Date() });
         
-        res.json({ answer: aiResponse });
+        res.json({ answer: aiResponse, sources });
     } catch (error) {
         console.error('Query error:', error);
         res.status(500).json({ message: 'Internal server error while processing your query.' });
@@ -335,7 +378,7 @@ const deleteDocument = async (req, res) => {
 const getUserDocuments = async (req, res) => {
     try {
         const documents = await Document.find({ userId: req.user._id })
-            .select('filename createdAt updatedAt totalChunks indexedChunks skippedChunks status extractionFailed')
+            .select('filename collectionId sourcePath createdAt updatedAt totalChunks indexedChunks skippedChunks status extractionFailed')
             .sort({ updatedAt: -1, createdAt: -1 });
         res.json({ documents });
     } catch (error) {
